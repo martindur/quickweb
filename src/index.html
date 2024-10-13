@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <script src="/static/quickweb.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+    >
+    <title>Dur's blog</title>
+  </head>
+
+  <body>
+    <header class="container">
+      <h1 q-bind="title"></h1>
+      <p q-bind="subtitle" />
+    </header>
+
+    <main class="container">
+      <section>
+        <h2>Posts</h2>
+        <article q-bind-list="posts">
+          <h3 q-bind="posts.@.title"></h3>
+          <p q-bind="posts.@.date" />
+          <p q-bind="posts.@.description" />
+        </article>
+      </section>
+
+      <ul>
+        <li q-bind-list="comments" />
+      </ul>
+    </main>
+
+    <footer class="container">
+        <p>&copy; 2024 My Blog. All rights reserved.</p>
+    </footer>
+
+    <h1>Count: <span q-text="counter" /></h1>
+    <button q-click="UserClickedCounter">+</button>
+  </body>
+</html>

@@ -1,4 +1,6 @@
 import gleam/bytes_builder
+import gleam/dynamic.{type Dynamic, classify, from}
+import gleam/erlang
 import gleam/erlang/process
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
@@ -6,45 +8,63 @@ import gleam/io
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{None, Some}
-import gleam/otp/actor
+import gleam/otp/actor.{type Next}
 import gleam/result
 import gleam/string
-import mist.{type Connection, type ResponseData}
-
-pub type Post {
-  Post(title: String, date: String, description: String)
+import mist.{
+  type Connection, type ResponseData, type WebsocketConnection,
+  type WebsocketMessage,
 }
 
-pub type Model {
-  Model(title: String, subtitle: String, posts: List(Post))
+// TODO: Let's make the interface for the backend
+// as "how we want to use it". I think a msg handler approach is
+// pretty good. We can have some variants like IntHandler(Model, Int) and StringHandler(Model, String)
+// For simple one arg handlers. And then a DynamicHandler(Model, Dynamic) which could be anything?
+
+pub fn jsonify(a: Dynamic) -> Json {
+  case classify(a) {
+    "String" -> result.unwrap(dynamic.string(a), "") |> json.string
+    "Int" -> result.unwrap(dynamic.int(a), 0) |> json.int
+    "Float" -> result.unwrap(dynamic.float(a), 0.0) |> json.float
+    // "Tuple of 4 elements" -> 
+    any -> {
+      any |> io.debug
+      a |> io.debug
+      json.string("bob")
+    }
+  }
 }
 
-pub fn main() {
+pub fn run(
+  handler: fn(model, WebsocketConnection, WebsocketMessage(a)) -> Next(a, model),
+  model: model,
+) {
   let not_found =
     response.new(404)
     |> response.set_body(mist.Bytes(bytes_builder.new()))
 
   let selector = process.new_selector()
-  let state =
-    Model("Welcome to Dur's Blog", "Tech stuff and whatnot", [
-      Post("Best post", "12-4-2019", "Some good stuff"),
-      Post("Decent post", "14-8-2020", "Some decent stuff"),
-      Post("Silly stuff", "08-2-2021", "Silly description"),
-    ])
 
   let assert Ok(_) =
     fn(req: Request(Connection)) -> Response(ResponseData) {
       case request.path_segments(req) {
-        [] -> serve_file("./src", ["index.html"])
+        [] -> serve_file("./priv/pages/", ["index.html"])
+        ["static", "quickweb.js"] -> {
+          case erlang.priv_directory("quickweb") {
+            Ok(dir) -> serve_file(dir <> "/static", ["quickweb.js"])
+            Error(Nil) -> serve_file("./priv/static", ["quickweb.js"])
+          }
+        }
+        // TODO: We probably also want this to be priv_directory
         ["static", ..rest] -> serve_file("./priv/static", rest)
         ["ws"] ->
           mist.websocket(
             request: req,
-            on_init: fn(_conn) { #(state, Some(selector)) },
+            on_init: fn(_conn) { #(model, Some(selector)) },
             on_close: fn(_state) { io.println("goodbye!") },
-            handler: handle_ws_message,
+            handler: handler,
           )
-        _ -> not_found
+        page -> serve_file("./priv/pages/", page)
       }
     }
     |> mist.new
@@ -57,30 +77,6 @@ pub fn main() {
 // fn increment_counter(model: Model) -> Model {
 //   Model(..model, counter: model.counter + 1)
 // }
-
-fn post_to_json(post: Post) -> Json {
-  [
-    #("title", json.string(post.title)),
-    #("date", json.string(post.date)),
-    #("description", json.string(post.description)),
-  ]
-  |> json.object
-}
-
-fn model_to_json(model: Model) -> Json {
-  [
-    #("title", json.string(model.title)),
-    #("subtitle", json.string(model.subtitle)),
-    #("posts", json.preprocessed_array(list.map(model.posts, post_to_json))),
-  ]
-  |> json.object
-}
-
-fn msg_to_json(msg_type: String, model: Model) -> String {
-  [#("msg", json.string(msg_type)), #("model", model_to_json(model))]
-  |> json.object
-  |> json.to_string
-}
 
 fn serve_file(root: String, path: List(String)) -> Response(ResponseData) {
   // NOTE: Files are apparently from root level, but gleam imports are relative to src folder
@@ -103,32 +99,6 @@ fn serve_file(root: String, path: List(String)) -> Response(ResponseData) {
     |> response.set_body(mist.Bytes(bytes_builder.new()))
   })
 }
-
-pub type MyMessage {
-  Broadcast(String)
-}
-
-fn handle_ws_message(state: Model, conn, message) {
-  case message {
-    mist.Text("PageLoaded") -> {
-      let assert Ok(_) =
-        mist.send_text_frame(conn, msg_to_json("update", state))
-      actor.continue(state)
-    }
-    mist.Text("UserClickedCounter") -> {
-      // let new_state = increment_counter(state)
-      let new_state = state
-      let assert Ok(_) =
-        mist.send_text_frame(conn, msg_to_json("update", new_state))
-      actor.continue(new_state)
-    }
-    mist.Text(_) | mist.Binary(_) -> {
-      actor.continue(state)
-    }
-    mist.Custom(Broadcast(text)) -> {
-      let assert Ok(_) = mist.send_text_frame(conn, text)
-      actor.continue(state)
-    }
-    mist.Closed | mist.Shutdown -> actor.Stop(process.Normal)
-  }
-}
+// pub type MyMessage {
+//   Broadcast(String)
+// }

@@ -1,12 +1,39 @@
-const qClick = (socket) => {
-  document.querySelectorAll('[q-click]').forEach(element => {
-    const value = element.getAttribute('q-click')
-    if (value) {
-    element.addEventListener('click', () => {
-      socket.send(value);
-    })
-    }
-  })
+function clearEventListeners() {
+  document.querySelectorAll('[q-event]').forEach(element => {
+    const newElement = element.cloneNode(true); // Clone without event listeners
+    element.replaceWith(newElement); // Replace the old element with the new one
+  });
+}
+
+function bindEvents(socket, model) {
+  document.querySelectorAll('[q-event]').forEach(element => {
+    const eventExpression = element.getAttribute('q-event');
+    const [eventType, handlerWithParams] = eventExpression.split(':');
+
+    // Parse the handler and params, e.g., 'DeletePost(blogs.1.id)'
+    const [handler, params] = handlerWithParams.match(/([^(]+)\(([^)]+)?\)/).slice(1, 3);
+
+    // Add event listener
+    element.addEventListener(eventType, () => {
+      // Resolve the keys dynamically using the passed model
+      const paramValues = resolveKeys(params.split(','), model);
+      sendMessageToServer(handler, paramValues, socket);
+    });
+  });
+}
+
+function resolveKeys(keys, model) {
+  console.log(keys)
+  console.log(model)
+  // Resolve each key in the model to get the latest values
+  // return keys.map(key => eval(`model.${key.trim()}`));
+  return keys.map(key => model[key]);
+}
+
+function sendMessageToServer(handler, params, socket) {
+    const message = `${handler}(${params.join(', ')})`;
+    console.log("Sending message to server:", message);
+    // socket.send(message); // Send the message via WebSocket
 }
 
 function flattenModel(obj, parentKey = '', result = {}) {
@@ -46,9 +73,17 @@ function generateListItems(model) {
       itemElement.setAttribute('q-bind', `${listKey}.${index}`);
 
       // Update inner q-bind elements within the item
-      itemElement.querySelectorAll('[q-bind]').forEach(child => {
-        const bindKey = child.getAttribute('q-bind');
-        child.setAttribute('q-bind', bindKey.replace('@', index)); // Replace @ with the actual index
+      itemElement.querySelectorAll('[q-bind], [q-event]').forEach(child => {
+        if (child.hasAttribute('q-bind')) {
+          const bindKey = child.getAttribute('q-bind');
+          child.setAttribute('q-bind', bindKey.replace('@', index)); // Replace @ with the actual index
+        }
+
+        if (child.hasAttribute('q-event')) {
+          const bindKey = child.getAttribute('q-event');
+          child.setAttribute('q-event', bindKey.replace('@', index)); // Replace @ with the actual index
+        }
+
       });
 
       itemElement.removeAttribute('q-bind-list'); // Prevent re-processing as a list template
@@ -58,17 +93,29 @@ function generateListItems(model) {
 }
 
 
-function bindModel(model) {
+function bindModel(model, socket) {
   const flattenedModel = flattenModel(model); // Flatten the model
-  console.log(flattenedModel)
   generateListItems(model)
     
   for (const key in flattenedModel) {
-    const element = document.querySelector(`[q-bind="${key}"]`);
-    if (element) {
-      element.textContent = flattenedModel[key]; // Bind the value to the DOM
-    }
+    document.querySelectorAll(`[q-bind*="${key}"]`).forEach(element => {
+      if (element) {
+        const bindValue = element.getAttribute('q-bind')
+        const [attribute, modelKey] = bindValue.includes(':') ? bindValue.split(':') : [null, bindValue]
+
+        const value = flattenedModel[modelKey]
+
+        if (attribute) {
+          element.setAttribute(attribute, value)
+        } else {
+          element.textContent = value;
+        }
+      }
+    })
   }
+
+  clearEventListeners()
+  bindEvents(socket, flattenedModel)
 }
 
 
@@ -92,12 +139,9 @@ const load = () => {
       return;
     }
 
-    // update(message.model);
-    bindModel(message.model)
-
     switch (message.msg) {
       case 'update':
-        bindModel(message.model)
+        bindModel(message.model, socket)
         break;
       default:
         console.warn('Unknown message type:', message.type)
@@ -108,8 +152,6 @@ const load = () => {
   socket.addEventListener('close', (event) => {
       console.log('WebSocket connection closed.');
   });
-
-  qClick(socket);
 }
 
 const setup = () => {

@@ -21,10 +21,12 @@
     <main class="container">
       <section>
         <h2>Posts</h2>
+        <p>Highlight: <span q-bind="posts.1.title" /></p>
         <article q-bind-list="posts">
-          <h3 q-bind="posts.@.title"></h3>
+          <a q-bind="href:posts.@.url"><h3 q-bind="posts.@.title"></h3></a>
           <p q-bind="posts.@.date" />
-          <p q-bind="posts.@.description" />
+          <p q-bind="posts.@.description"></p>
+          <button q-event="click:DeletePost(posts.@.title)">Delete Post</button>
         </article>
       </section>
 

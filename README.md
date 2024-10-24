@@ -1,24 +1,15 @@
 # quickweb
 
-[![Package Version](https://img.shields.io/hexpm/v/quickweb)](https://hex.pm/packages/quickweb)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/quickweb/)
+To install dependencies:
 
-```sh
-gleam add quickweb@1
-```
-```gleam
-import quickweb
-
-pub fn main() {
-  // TODO: An example of the project in use
-}
+```bash
+bun install
 ```
 
-Further documentation can be found at <https://hexdocs.pm/quickweb>.
+To run:
 
-## Development
-
-```sh
-gleam run   # Run the project
-gleam test  # Run the tests
+```bash
+bun run index.ts
 ```
+
+This project was created using `bun init` in bun v1.1.30. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
